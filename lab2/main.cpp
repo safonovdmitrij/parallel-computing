@@ -7,8 +7,9 @@
 #include <atomic>
 
 constexpr size_t size = 5000000;
-constexpr size_t threadsNum = 2;
+constexpr size_t threadsNum = 10;
 
+std::mutex mtx;
 
 void fillArray(std::vector<int>& array, size_t size)
 {
@@ -26,35 +27,19 @@ void printArray(std::vector<int>& array, size_t size)
     }
 }
 
-void processSegment(std::vector<int>& array, size_t start, size_t finish, std::atomic<int>& minimum, std::atomic<long long>& globalSum)
+void processSegment(std::vector<int>& array, size_t start, size_t finish, int& minimum, long long& globalSum, std::mutex& mtx)
 {
-    long long localSum = 0;
-    int localMinimum = INT_MAX;
-    bool found = false;
-
     for(size_t i = start; i < finish; i++)
     {
+        std::lock_guard<std::mutex> lock(mtx);
         if(array[i] % 10 == 0)
         {
-            found = true;
-            localSum += array[i];
+            globalSum += array[i];
 
-            if(array[i] < localMinimum)
+            if(array[i] < minimum)
             {
-                localMinimum = array[i];
+                minimum = array[i];
             }
-        }
-    }
-
-    if(found)
-    {
-        long long currentSum = globalSum.load();
-        while(!globalSum.compare_exchange_weak(currentSum, currentSum + localSum));
-
-        int currentMinimum = minimum.load();
-
-        while(localMinimum < currentMinimum && !minimum.compare_exchange_weak(currentMinimum, localMinimum))
-        {
         }
     }
 }
@@ -65,8 +50,8 @@ int main()
     srand(123);
 
     std::vector<int> array(size);
-    std::atomic<long long> globalSum(0);
-    std::atomic<int> minimum(INT_MAX);
+    long long globalSum(0);
+    int minimum(INT_MAX);
 
     std::thread threads[threadsNum];
     size_t sectionSize = size / threadsNum;
@@ -87,7 +72,7 @@ int main()
             finish = size;
         }
 
-        threads[i] = std::thread(processSegment, std::ref(array), start, finish, std::ref(minimum), std::ref(globalSum));
+        threads[i] = std::thread(processSegment, std::ref(array), start, finish, std::ref(minimum), std::ref(globalSum), std::ref(mtx));
     }
 
     for(size_t i = 0; i < threadsNum; i++)
@@ -99,14 +84,14 @@ int main()
     auto endTime = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
 
-    std::cout << "\nGlobal Sum: " << globalSum.load() << std::endl;
-    if(minimum.load() == INT_MAX)
+    std::cout << "\nGlobal Sum: " << globalSum << std::endl;
+    if(minimum == INT_MAX)
     {
         std::cout << "No elements divisible by 10 found\n";
     }
     else
     {
-        std::cout << "Minimum: " << minimum.load() << std::endl;
+        std::cout << "Minimum: " << minimum << std::endl;
     }
     std::cout << "Total time: " << duration.count() << " microseconds\n";
 
