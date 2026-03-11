@@ -29,5 +29,36 @@ int main()
         pool.add_task(task);
     }
 
+    std::string command;
+
+    while(true)
+    {
+        std::cin >> command;
+
+        if(command == "start")
+        {
+            pool.start();
+        }
+
+        if(command == "pause")
+        {
+            pool.pause();
+        }
+
+        if(command == "resume")
+        {
+            pool.resume();
+        }
+
+        if(command == "stop")
+        {
+            pool.stop();
+            break;
+        }
+
+    }
+
+
+
     return 0;
 }

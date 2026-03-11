@@ -13,11 +13,7 @@ void Task::operator()() const
 
 ThreadPool::ThreadPool(int num_threads)
 {
-    for (int i = 0; i < num_threads; i++)
-    {
-        std::thread worker_thread(&ThreadPool::worker, this);
-        workers.push_back(std::move(worker_thread));
-    }
+    thread_count = num_threads;
 }
 
 
@@ -49,9 +45,14 @@ void ThreadPool::worker()
     {
         std::unique_lock<std::mutex> lock(queue_mutex);
 
-        while(tasks.empty())
+        while((tasks.empty() || paused) && !stopped)
         {
             condition.wait(lock);
+        }
+
+        if(stopped)
+        {
+            return;
         }
 
         task = tasks.top();
@@ -61,4 +62,47 @@ void ThreadPool::worker()
 
         task();
     }
+}
+
+void ThreadPool::start()
+{
+    std::lock_guard<std::mutex> lock(queue_mutex);
+
+    if(running)
+    {
+        return;
+    }
+
+    running = true;
+    paused = false;
+
+    for(int i = 0; i < thread_count; i++)
+    {
+        workers.emplace_back(&ThreadPool::worker, this);
+    }
+}
+
+
+void ThreadPool::pause()
+{
+    std::lock_guard<std::mutex> lock(queue_mutex);
+    paused = true;
+}
+
+
+void ThreadPool::resume()
+{
+    std::lock_guard<std::mutex> lock(queue_mutex);
+    paused = false;
+
+    condition.notify_all();
+}
+
+void ThreadPool::stop()
+{
+    {
+        std::lock_guard<std::mutex> lock(queue_mutex);
+        stopped = true;
+    }
+    condition.notify_all();
 }

@@ -35,14 +35,24 @@ private:
     std::mutex queue_mutex;
     std::condition_variable condition;
 
+    int thread_count = 0;
+
+    bool running = false;
+    bool paused = false;
+    bool stopped = false;
+
+    void worker();
+
 public:
     ThreadPool(int num_threads);
     ~ThreadPool();
 
     void add_task(const Task& task);
-    void worker();
 
-
+    void start();
+    void pause();
+    void resume();
+    void stop();
 };
 
 
