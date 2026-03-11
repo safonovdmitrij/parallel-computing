@@ -3,11 +3,12 @@
 #include <iostream>
 #include <chrono>
 
-
+static std::mutex cout_mutex;
 
 void Task::operator()() const
 {
     std::this_thread::sleep_for(std::chrono::seconds(this->duration));
+    std::lock_guard<std::mutex> lock(cout_mutex);
     std::cout << "task " << this->id << " Execution time: " << this->duration << " seconds" << std::endl;
 }
 
@@ -19,6 +20,8 @@ ThreadPool::ThreadPool(int num_threads)
 
 ThreadPool::~ThreadPool()
 {
+    stop();
+
     for(int i = 0; i < workers.size(); i++)
     {
         workers[i].join();
@@ -31,6 +34,9 @@ void ThreadPool::add_task(const Task& task)
     {
         std::lock_guard<std::mutex> lock(queue_mutex);
         tasks.push(task);
+
+        queue_length_sum += tasks.size();
+        queue_samples++;
     }
 
     condition.notify_one();
@@ -47,7 +53,13 @@ void ThreadPool::worker()
 
         while((tasks.empty() || paused) && !stopped)
         {
+            auto wait_start = std::chrono::steady_clock::now();
             condition.wait(lock);
+            auto wait_end = std::chrono::steady_clock::now();
+
+            auto wait_duration = std::chrono::duration_cast<std::chrono::microseconds>(wait_end - wait_start).count();
+            total_wait_time += wait_duration;
+            wait_count++;
         }
 
         if(stopped)
@@ -61,6 +73,8 @@ void ThreadPool::worker()
         lock.unlock();
 
         task();
+        tasks_executed++;
+        total_execution_time += task.duration;
     }
 }
 
@@ -105,4 +119,34 @@ void ThreadPool::stop()
         stopped = true;
     }
     condition.notify_all();
+}
+
+void ThreadPool::print_stats()
+{
+    int executed = tasks_executed.load();
+    int total_time = total_execution_time.load();
+    double avg_queue = 0;
+    double avg_wait = 0;
+
+    if(executed == 0)
+    {
+        std::cout << "No tasks executed" << std::endl;
+        return;
+    }
+
+    if(queue_samples > 0)
+    {
+        avg_queue = (double)queue_length_sum / queue_samples;
+    }
+
+    if(wait_count > 0)
+    {
+        avg_wait = (double)total_wait_time / wait_count / 1000.0;
+    }
+
+
+    std::cout << "Tasks executed: " << executed << std::endl;
+    std::cout << "Average execution time: " << (double)total_time/executed << " seconds" << std::endl;
+    std::cout << "Average queue length: "<< avg_queue << std::endl;
+    std::cout << "Average worker wait time: " << avg_wait << " ms" << std::endl;
 }
