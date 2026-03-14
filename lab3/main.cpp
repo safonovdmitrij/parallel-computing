@@ -4,7 +4,7 @@
 #include <atomic>
 #include "thread_pool.h"
 
-
+std::atomic<bool> stop_generators = false;
 
 Task task_generator()
 {
@@ -23,15 +23,30 @@ Task task_generator()
 }
 
 
-void generator(ThreadPool& pool, int tasks_count)
+void generator(ThreadPool& pool)
 {
-    for(int i = 0; i < tasks_count; i++)
+    while (!stop_generators)
     {
         std::this_thread::sleep_for(std::chrono::milliseconds(1000));
         Task task = task_generator();
         pool.add_task(task);
     }
 }
+
+
+void run_test(ThreadPool& pool, int seconds)
+{
+    std::cout << "Starting automatic test for " << seconds << " seconds..." << std::endl;
+
+    std::this_thread::sleep_for(std::chrono::seconds(seconds));
+
+    stop_generators = true;
+    pool.stop();
+
+    std::cout << "Results of automatic testing: " << std::endl;
+    pool.print_stats();
+}
+
 
 
 int main()
@@ -41,14 +56,15 @@ int main()
     pool.start();
 
     const size_t generators_count = 2;
-    const size_t tasks_count = 10;
+
+    const int test_duration = 20;
 
     std::vector<std::thread> generators;
 
     // generating tasks from few threads
     for(int i = 0; i < generators_count; i++)
     {
-        generators.emplace_back(generator, std::ref(pool), tasks_count);
+        generators.emplace_back(generator, std::ref(pool));
     }
 
     // commands input
@@ -76,8 +92,15 @@ int main()
             pool.print_stats();
         }
 
+        if(command == "test")
+        {
+            run_test(pool, test_duration);
+        }
+
+
         if(command == "exit")
         {
+            stop_generators = true;
             pool.stop();
             break;
         }

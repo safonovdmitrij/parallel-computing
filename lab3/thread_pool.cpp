@@ -78,6 +78,12 @@ void ThreadPool::worker()
     }
 }
 
+size_t ThreadPool::get_queue_length()
+{
+    std::lock_guard<std::mutex> lock(queue_mutex);
+    return tasks.size();
+}
+
 void ThreadPool::start()
 {
     std::lock_guard<std::mutex> lock(queue_mutex);
@@ -149,4 +155,5 @@ void ThreadPool::print_stats()
     std::cout << "Average execution time: " << (double)total_time/executed << " seconds" << std::endl;
     std::cout << "Average queue length: "<< avg_queue << std::endl;
     std::cout << "Average worker wait time: " << avg_wait << " ms" << std::endl;
+    std::cout << "Queue size at end: " << get_queue_length() << std::endl;
 }

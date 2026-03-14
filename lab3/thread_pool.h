@@ -58,6 +58,7 @@ public:
     ~ThreadPool();
 
     void add_task(const Task& task);
+    size_t get_queue_length();
 
     void start();
     void pause();
