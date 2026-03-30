@@ -1,7 +1,75 @@
 #include <iostream>
 #include <WinSock2.h>
+#include <vector>
+#include <chrono>
 
 #define port 8080
+
+void print_matrix(std::vector<int>& matrix, int matrix_size)
+{
+    for (int i = 0; i < matrix_size; i++)
+    {
+        std::cout << "[";
+
+        for (int j = 0; j < matrix_size; j++)
+        {
+            if (j == matrix_size - 1)
+            {
+                std::cout << matrix[i * matrix_size + j];
+                continue;
+            }
+            std::cout << matrix[i * matrix_size + j] << ", ";
+        }
+
+        std::cout << "]" << std::endl;
+    }
+}
+
+
+bool receive_all(SOCKET socket, char* buffer, int totalBytes)
+{
+    int received = 0;
+
+    while (received < totalBytes)
+    {
+        int bytes = recv(socket, buffer + received, totalBytes - received, 0);
+
+        if (bytes == SOCKET_ERROR || bytes == 0)
+        {
+            return false;
+        }
+
+        received += bytes;
+    }
+
+    return true;
+}
+
+
+bool receive_matrix(SOCKET clientSocket, std::vector<int> &matrix, int &size, int &threads_num)
+{
+    // receiving size
+    if (!receive_all(clientSocket, (char*) &size, sizeof(size)))
+    {
+        return false;
+    }
+
+    // receiving threads number
+    if (!receive_all(clientSocket, (char*) &threads_num, sizeof(threads_num)))
+    {
+        return false;
+    }
+
+    // receiving matrix
+    matrix.resize(size * size);
+    if  (!receive_all(clientSocket, (char*) &matrix[0], matrix.size() * sizeof(int)))
+    {
+        return false;
+    }
+
+    return true;
+}
+
 
 int main()
 {
@@ -36,7 +104,6 @@ int main()
         return 1;
     }
 
-
     if (listen(serverSocket, 5) != 0)
     {
         std::cerr << "Error listening on socket: " << WSAGetLastError() << std::endl;
@@ -59,36 +126,34 @@ int main()
         return 1;
     }
 
-    // receiving data from client
-    char buffer[256]{};
 
-    int bytesReceived = recv(clientSocket, buffer, sizeof(buffer), 0);
+    // receiving matrix from client
+    int size = 0;
+    int threads_num = 0;
+    std::vector<int> matrix;
 
-    if (bytesReceived > 0)
+    if (!receive_matrix(clientSocket, matrix, size, threads_num))
     {
-        std::cout << "Received from client: ";
-        std::cout.write(buffer, bytesReceived) << std::endl;
-    }
-    else if (bytesReceived == 0)
-    {
-        std::cout << "Client disconnected" << std::endl;
-    }
-    else
-    {
-        std::cerr << "Error receiving from client: " << WSAGetLastError() << std::endl;
+        std::cerr << "Error receiving matrix: " << WSAGetLastError() << std::endl;
         closesocket(clientSocket);
         closesocket(serverSocket);
         WSACleanup();
         return 1;
     }
 
-    // Sending answer
-    const char* answer = "Hello client! I'm fine";
-    int bytesSent = send(clientSocket, answer, strlen(answer), 0);
-    if (bytesSent == SOCKET_ERROR)
-    {
-        std::cerr << "Error sending message: " << WSAGetLastError() << std::endl;
-    }
+    std::cout << "Matrix received!" << std::endl;
+    std::cout << "Size of matrix: " << size << std::endl;
+    std::cout << "Threads number: " << threads_num << std::endl;
+
+    print_matrix(matrix, size);
+
+      // // Sending answer
+    // const char* answer = "Hello client! I'm fine";
+    // int bytesSent = send(clientSocket, answer, strlen(answer), 0);
+    // if (bytesSent == SOCKET_ERROR)
+    // {
+    //     std::cerr << "Error sending message: " << WSAGetLastError() << std::endl;
+    // }
 
 
     closesocket(clientSocket);
