@@ -84,19 +84,26 @@ bool send_all(SOCKET socket, const char* data, int totalBytes)
 bool send_matrix(SOCKET clientSocket, std::vector<int>& matrix, int size, int threads_num)
 {
     // sending matrix size
-    if (!send_all(clientSocket, (char*) &size, sizeof(size)))
+    int net_size = htonl(size);
+    if (!send_all(clientSocket, (char*) &net_size, sizeof(net_size)))
     {
         return false;
     }
 
     // sending threads number
-    if (!send_all(clientSocket, (char*) &threads_num, sizeof(threads_num)))
+    int net_threads_num = htonl(threads_num);
+    if (!send_all(clientSocket, (char*) &net_threads_num, sizeof(net_threads_num)))
     {
         return false;
     }
 
     // sending matrix
-    if (!send_all(clientSocket, (char*) &matrix[0], matrix.size() * sizeof(int)))
+    std::vector<int> net_matrix = matrix;
+    for(int i = 0; i < net_matrix.size(); i++)
+    {
+        net_matrix[i] = htonl(net_matrix[i]);
+    }
+    if (!send_all(clientSocket, (char*) &net_matrix[0], net_matrix.size() * sizeof(int)))
     {
         return false;
     }
@@ -121,6 +128,33 @@ void get_result(SOCKET socket)
 }
 
 
+SOCKET setup_client()
+{
+    SOCKET clientSocket = socket(AF_INET, SOCK_STREAM, 0);
+    if (clientSocket == INVALID_SOCKET)
+    {
+        return INVALID_SOCKET;
+    }
+
+    return clientSocket;
+}
+
+bool connect_to_server(SOCKET clientSocket)
+{
+    SOCKADDR_IN serverAddress{};
+    serverAddress.sin_family = AF_INET;
+    serverAddress.sin_port = htons(port);
+    serverAddress.sin_addr.s_addr = inet_addr(SERVER_IP);
+
+    // Connecting to server
+    if (connect(clientSocket, (SOCKADDR*)&serverAddress, sizeof(serverAddress)) != 0)
+    {
+        return false;
+    }
+
+    return true;
+}
+
 
 int main()
 {
@@ -131,29 +165,27 @@ int main()
         return 1;
     }
 
-    SOCKET clientSocket = socket(AF_INET, SOCK_STREAM, 0);
+    SOCKET clientSocket = setup_client();
     if (clientSocket == INVALID_SOCKET)
     {
-        std::cerr << "Error creating socket" << WSAGetLastError() << std::endl;
+        std::cerr << "Error creating socket: " << WSAGetLastError() << std::endl;
         WSACleanup();
         return 1;
     }
 
-    SOCKADDR_IN serverAddress{};
-    serverAddress.sin_family = AF_INET;
-    serverAddress.sin_port = htons(port);
-    serverAddress.sin_addr.s_addr = inet_addr(SERVER_IP);
-
-    // Connecting to server
-    if (connect(clientSocket, (SOCKADDR*)&serverAddress, sizeof(serverAddress)) != 0)
+    if (!connect_to_server(clientSocket))
     {
         std::cerr << "Error connecting to server: " << WSAGetLastError() << std::endl;
         closesocket(clientSocket);
         WSACleanup();
         return 1;
     }
+    else
+    {
+        std::cout << "Connected to server" << std::endl;
+    }
 
-    std::cout << "Connected to server" << std::endl;
+
 
     // Sending data
     std::vector<int> matrix(matrix_size * matrix_size);

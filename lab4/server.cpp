@@ -49,16 +49,20 @@ bool receive_all(SOCKET socket, char* buffer, int totalBytes)
 bool receive_matrix(SOCKET clientSocket, std::vector<int> &matrix, int &size, int &threads_num)
 {
     // receiving size
-    if (!receive_all(clientSocket, (char*) &size, sizeof(size)))
+    int net_size = 0;
+    if (!receive_all(clientSocket, (char*) &net_size, sizeof(net_size)))
     {
         return false;
     }
+    size = ntohl(net_size);
 
     // receiving threads number
-    if (!receive_all(clientSocket, (char*) &threads_num, sizeof(threads_num)))
+    int net_threads_num = 0;
+    if (!receive_all(clientSocket, (char*) &net_threads_num, sizeof(net_threads_num)))
     {
         return false;
     }
+    threads_num = ntohl(net_threads_num);
 
     // receiving matrix
     matrix.resize(size * size);
@@ -67,9 +71,59 @@ bool receive_matrix(SOCKET clientSocket, std::vector<int> &matrix, int &size, in
         return false;
     }
 
+    for (int i = 0; i < matrix.size(); i++)
+    {
+        matrix[i] = ntohl(matrix[i]);
+    }
+
     return true;
 }
 
+
+SOCKET setup_server()
+{
+    // Server socket configuration
+    SOCKET serverSocket = socket(AF_INET, SOCK_STREAM, 0);
+    if (serverSocket == INVALID_SOCKET)
+    {
+        return INVALID_SOCKET;
+    }
+
+    sockaddr_in serverAddress{};
+    serverAddress.sin_family = AF_INET;
+    serverAddress.sin_port = htons(port);
+    serverAddress.sin_addr.s_addr = htonl(INADDR_ANY);
+
+    //Bind the socket
+    if (bind(serverSocket, (sockaddr*)&serverAddress, sizeof(serverAddress)) != 0)
+    {
+        closesocket(serverSocket);
+        return INVALID_SOCKET;
+    }
+
+    if (listen(serverSocket, 5) != 0)
+    {
+        closesocket(serverSocket);
+        return INVALID_SOCKET;
+    }
+
+    return serverSocket;
+}
+
+
+SOCKET accept_client(SOCKET serverSocket)
+{
+    sockaddr_in clientAddress{};
+    int clientSize = sizeof(clientAddress);
+
+    SOCKET clientSocket = accept(serverSocket, (sockaddr*)&clientAddress, &clientSize);
+    if (clientSocket == INVALID_SOCKET)
+    {
+        return INVALID_SOCKET;
+    }
+
+    return clientSocket;
+}
 
 int main()
 {
@@ -82,48 +136,28 @@ int main()
     }
 
     // Server socket configuration
-    SOCKET serverSocket = socket(AF_INET, SOCK_STREAM, 0);
+    SOCKET serverSocket = setup_server();
     if (serverSocket == INVALID_SOCKET)
     {
-        std::cerr << "Error creating socket: " << WSAGetLastError() << std::endl;
         WSACleanup();
         return 1;
     }
-
-    sockaddr_in serverAddress{};
-    serverAddress.sin_family = AF_INET;
-    serverAddress.sin_port = htons(port);
-    serverAddress.sin_addr.s_addr = htonl(INADDR_ANY);
-
-    //Bind the socket
-    if (bind(serverSocket, (sockaddr*)&serverAddress, sizeof(serverAddress)) != 0)
+    else
     {
-        std::cerr << "Error binding socket: " << WSAGetLastError() << std::endl;
-        closesocket(serverSocket);
-        WSACleanup();
-        return 1;
+        std::cout << "Server listening on port " << port << std::endl;
     }
 
-    if (listen(serverSocket, 5) != 0)
-    {
-        std::cerr << "Error listening on socket: " << WSAGetLastError() << std::endl;
-        closesocket(serverSocket);
-        WSACleanup();
-        return 1;
-    }
-
-    std::cout << "Server listening on port " << port << std::endl;
-
-    sockaddr_in clientAddress{};
-    int clientSize = sizeof(clientAddress);
-
-    SOCKET clientSocket = accept(serverSocket, (sockaddr*)&clientAddress, &clientSize);
+    // Client socket configuration
+    SOCKET clientSocket = accept_client(serverSocket);
     if (clientSocket == INVALID_SOCKET)
     {
-        std::cerr << "Error accepting: " << WSAGetLastError() << std::endl;
         closesocket(serverSocket);
         WSACleanup();
         return 1;
+    }
+    else
+    {
+        std::cout << "Client connected" << std::endl;
     }
 
 
@@ -147,7 +181,7 @@ int main()
 
     print_matrix(matrix, size);
 
-      // // Sending answer
+    // // Sending answer
     // const char* answer = "Hello client! I'm fine";
     // int bytesSent = send(clientSocket, answer, strlen(answer), 0);
     // if (bytesSent == SOCKET_ERROR)
