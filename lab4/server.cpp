@@ -5,6 +5,16 @@
 
 #define port 8080
 
+enum Command
+{
+    SEND_DATA = 1,
+    START = 2,
+    STATUS = 3,
+    RESULT = 4,
+    EXIT = 5
+};
+
+
 void print_matrix(std::vector<int>& matrix, int matrix_size)
 {
     for (int i = 0; i < matrix_size; i++)
@@ -46,6 +56,20 @@ bool receive_all(SOCKET socket, char* buffer, int totalBytes)
 }
 
 
+bool receive_command(SOCKET socket, int &command)
+{
+    int net_command;
+
+    if (!receive_all(socket, (char*) &net_command, sizeof(net_command)))
+    {
+        return false;
+    }
+
+    command = ntohl(net_command);
+    return true;
+}
+
+
 bool receive_matrix(SOCKET clientSocket, std::vector<int> &matrix, int &size, int &threads_num)
 {
     // receiving size
@@ -80,6 +104,110 @@ bool receive_matrix(SOCKET clientSocket, std::vector<int> &matrix, int &size, in
 }
 
 
+// API
+bool handle_send_data(SOCKET clientSocket, std::vector<int> &matrix, int &size, int &threads_num)
+{
+    if (!receive_matrix(clientSocket, matrix, size, threads_num))
+    {
+        return false;
+    }
+
+    std::cout << "Matrix received!" << std::endl;
+    std::cout << "Size of matrix: " << size << std::endl;
+    std::cout << "Threads number: " << threads_num << std::endl;
+
+    print_matrix(matrix, size);
+    return true;
+}
+
+
+bool handle_start()
+{
+    std::cout << "Computing started..." << std::endl;
+    return true;
+}
+
+
+bool handle_status()
+{
+    std::cout << "Sending status..." << std::endl;
+    return true;
+}
+
+
+bool handle_result()
+{
+    std::cout << "Sending result..." << std::endl;
+    return true;
+}
+
+
+bool process_client_commands(SOCKET clientSocket)
+{
+    int command = 0;
+
+    int size = 0;
+    int threads_num = 0;
+    std::vector<int> matrix;
+
+    while (true)
+    {
+        if (!receive_command(clientSocket,command))
+        {
+            std::cerr << "Client disconnected or error" << std::endl;
+            return false;
+        }
+
+        switch (command)
+        {
+            case SEND_DATA:
+                if (!handle_send_data(clientSocket, matrix, size, threads_num))
+                {
+                    std::cerr << "Error handling SEND_DATA" << std::endl;
+                    return false;
+                }
+                break;
+
+            case START:
+                if (!handle_start())
+                {
+                    std::cerr << "Error handling START" << std::endl;
+                    return false;
+                }
+                break;
+
+            case STATUS:
+                if (!handle_status())
+                {
+                    std::cerr << "Error handling STATUS" << std::endl;
+                    return false;
+                }
+                break;
+
+            case RESULT:
+                if (!handle_result())
+                {
+                    std::cerr << "Error handling RESULT" << std::endl;
+                    return false;
+                }
+                break;
+
+        case EXIT:
+            std::cout << "Client requested disconnect" << std::endl;
+            return true;
+
+            default:
+                {
+                    std::cerr << "Unknown command: " << command << std::endl;
+                    break;
+                }
+        }
+    }
+    return true;
+}
+
+
+// Connection methods
 SOCKET setup_server()
 {
     // Server socket configuration
@@ -161,33 +289,11 @@ int main()
     }
 
 
-    // receiving matrix from client
-    int size = 0;
-    int threads_num = 0;
-    std::vector<int> matrix;
+    // receiving
+    process_client_commands(clientSocket);
 
-    if (!receive_matrix(clientSocket, matrix, size, threads_num))
-    {
-        std::cerr << "Error receiving matrix: " << WSAGetLastError() << std::endl;
-        closesocket(clientSocket);
-        closesocket(serverSocket);
-        WSACleanup();
-        return 1;
-    }
 
-    std::cout << "Matrix received!" << std::endl;
-    std::cout << "Size of matrix: " << size << std::endl;
-    std::cout << "Threads number: " << threads_num << std::endl;
 
-    print_matrix(matrix, size);
-
-    // // Sending answer
-    // const char* answer = "Hello client! I'm fine";
-    // int bytesSent = send(clientSocket, answer, strlen(answer), 0);
-    // if (bytesSent == SOCKET_ERROR)
-    // {
-    //     std::cerr << "Error sending message: " << WSAGetLastError() << std::endl;
-    // }
 
 
     closesocket(clientSocket);

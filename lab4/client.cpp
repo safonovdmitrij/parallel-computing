@@ -10,7 +10,17 @@
 const int matrix_size = 10;
 const int threads_num = 3;
 
+enum Command
+{
+    SEND_DATA = 1,
+    START = 2,
+    STATUS = 3,
+    RESULT = 4,
+    EXIT = 5
+};
 
+
+// matrix methods
 int random_number_generator()
 {
     return rand() % 100;
@@ -61,7 +71,7 @@ void print_matrix(std::vector<int>& matrix)
     }
 }
 
-
+// Application protocol methods
 bool send_all(SOCKET socket, const char* data, int totalBytes)
 {
     int sent = 0;
@@ -80,6 +90,11 @@ bool send_all(SOCKET socket, const char* data, int totalBytes)
     return true;
 }
 
+bool send_command(SOCKET socket, int command)
+{
+    int net_cmd = htonl(command);
+    return send_all(socket, (char*) &net_cmd, sizeof(net_cmd));
+}
 
 bool send_matrix(SOCKET clientSocket, std::vector<int>& matrix, int size, int threads_num)
 {
@@ -111,23 +126,70 @@ bool send_matrix(SOCKET clientSocket, std::vector<int>& matrix, int size, int th
     return true;
 }
 
-
-void start_computing(SOCKET socket)
+// API
+bool send_data(SOCKET socket, std::vector<int>& matrix, int size, int threads_num)
 {
+    std::cout << "Sending data..." << std::endl;
 
+    if (!send_command(socket, SEND_DATA))
+    {
+        return false;
+    }
+
+    if (!send_matrix(socket, matrix, size, threads_num))
+    {
+        return false;
+    }
+    return true;
 }
 
-void get_status(SOCKET socket)
-{
 
+bool start_computing(SOCKET socket)
+{
+    std::cout << "Sending START command..." << std::endl;
+
+    if (!send_command(socket, START))
+    {
+        return false;
+    }
+    return true;
 }
 
-void get_result(SOCKET socket)
+bool get_status(SOCKET socket)
 {
+    std::cout << "Sending STATUS command..." << std::endl;
 
+    if (!send_command(socket, STATUS))
+    {
+        return false;
+    }
+    return true;
+}
+
+bool get_result(SOCKET socket)
+{
+    std::cout << "Sending RESULT command..." << std::endl;
+
+    if (!send_command(socket, RESULT))
+    {
+        return false;
+    }
+    return true;
 }
 
 
+bool send_exit(SOCKET socket)
+{
+    std::cout << "Sending EXIT command..." << std::endl;
+
+    if (!send_command(socket, EXIT))
+    {
+        return false;
+    }
+    return true;
+}
+
+// connection methods
 SOCKET setup_client()
 {
     SOCKET clientSocket = socket(AF_INET, SOCK_STREAM, 0);
@@ -191,28 +253,42 @@ int main()
     std::vector<int> matrix(matrix_size * matrix_size);
     fill_matrix(matrix);
 
-    print_matrix(matrix);
 
-    send_matrix(clientSocket, matrix, matrix_size, threads_num);
+    // SEND_DATA
+    if (!send_data(clientSocket, matrix, matrix_size, threads_num))
+    {
+        std::cerr << "Error sending data" << std::endl;
+    }
+
+    // START
+    if (!start_computing(clientSocket))
+    {
+        std::cerr << "Error starting computing" << std::endl;
+    }
+
+    // STATUS
+    if (!get_status(clientSocket))
+    {
+        std::cerr << "Error reading status" << std::endl;
+    }
+
+    // RESULT
+    if (!get_result(clientSocket))
+    {
+        std::cerr << "Error reading result" << std::endl;
+    }
+
+    if (!send_exit(clientSocket))
+    {
+        std::cerr << "Error exiting" << std::endl;
+    }
+    // Receiving result
 
 
-    // //Receiving answer
-    // char buffer[256]{};
-    // int bytesReceived = recv(clientSocket, buffer, sizeof(buffer), 0);
-    // if (bytesReceived > 0)
-    // {
-    //     std::cout << "Received from server: ";
-    //     std::cout.write(buffer, bytesReceived) << std::endl;
-    // }
-    // else if (bytesReceived == 0)
-    // {
-    //     std::cout << "Server disconnected" << std::endl;
-    // }
-    // else
-    // {
-    //     std::cerr << "Recv failed: " << WSAGetLastError() << std::endl;
-    // }
-    //
+
+
+
+
     closesocket(clientSocket);
     WSACleanup();
     return 0;
