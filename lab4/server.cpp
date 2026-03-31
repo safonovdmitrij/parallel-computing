@@ -2,6 +2,7 @@
 #include <WinSock2.h>
 #include <vector>
 #include <chrono>
+#include <thread>
 
 #define port 8080
 
@@ -14,7 +15,14 @@ enum Command
     EXIT = 5
 };
 
+enum Status
+{
+    IDLE = 0,
+    PROCESSING = 1,
+    DONE = 2
+};
 
+// Processing matrix
 void print_matrix(std::vector<int>& matrix, int matrix_size)
 {
     for (int i = 0; i < matrix_size; i++)
@@ -36,6 +44,60 @@ void print_matrix(std::vector<int>& matrix, int matrix_size)
 }
 
 
+int compute_sum(std::vector<int>& matrix, int row, int size)
+{
+    int sum = 0;
+    for(int i = 0; i < size; i++)
+    {
+        if (i == row)
+        {
+            continue;
+        }
+        sum += matrix[row * size + i];
+    }
+
+    return sum;
+}
+
+void fill_diagonal(std::vector<int>& matrix, int start, int end, int size)
+{
+    for(int i = start; i < end; i++)
+    {
+        int sum = compute_sum(matrix, i, size);
+        matrix[i * size + i] = sum;
+    }
+}
+
+
+void parallel_compute(std::vector<int>& matrix, int size, int threads_num)
+{
+    std::vector<std::thread> threads(threads_num);
+
+    int section_size = size / threads_num;
+    int start = 0;
+    int end = 0;
+
+    for(int i = 0; i < threads_num; i++)
+    {
+        start = i * section_size;
+        end = start + section_size;
+
+        if (i == threads_num - 1)
+        {
+            end = size;
+        }
+
+        threads[i] = std::thread(fill_diagonal, std::ref(matrix), start, end, size);
+    }
+
+    for (int i = 0; i < threads_num; i++)
+    {
+        threads[i].join();
+    }
+}
+
+
+// Application protocol
 bool receive_all(SOCKET socket, char* buffer, int totalBytes)
 {
     int received = 0;
@@ -52,6 +114,25 @@ bool receive_all(SOCKET socket, char* buffer, int totalBytes)
         received += bytes;
     }
 
+    return true;
+}
+
+
+bool send_all(SOCKET socket, const char* data, int totalBytes)
+{
+    int sent = 0;
+
+    while (sent < totalBytes)
+    {
+        int bytes = send(socket, data + sent, totalBytes - sent, 0);
+
+        if (bytes == SOCKET_ERROR || bytes == 0)
+        {
+            return false;
+        }
+
+        sent += bytes;
+    }
     return true;
 }
 
@@ -104,6 +185,8 @@ bool receive_matrix(SOCKET clientSocket, std::vector<int> &matrix, int &size, in
 }
 
 
+
+
 // API
 bool handle_send_data(SOCKET clientSocket, std::vector<int> &matrix, int &size, int &threads_num)
 {
@@ -116,28 +199,66 @@ bool handle_send_data(SOCKET clientSocket, std::vector<int> &matrix, int &size, 
     std::cout << "Size of matrix: " << size << std::endl;
     std::cout << "Threads number: " << threads_num << std::endl;
 
-    print_matrix(matrix, size);
     return true;
 }
 
 
-bool handle_start()
+bool handle_start(std::vector<int> &matrix, int size, int threads_num, Status &current_status)
 {
     std::cout << "Computing started..." << std::endl;
+
+    current_status = PROCESSING;
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+    parallel_compute(matrix, size, threads_num);
+
+    current_status = DONE;
+
     return true;
 }
 
 
-bool handle_status()
+bool handle_status(SOCKET clientSocket, Status &current_status)
 {
     std::cout << "Sending status..." << std::endl;
+
+    int net_status = htonl((int)current_status);
+
+    int bytes = send(clientSocket, (char*) &net_status, sizeof(net_status), 0);
+
+    if (bytes == SOCKET_ERROR || bytes == 0)
+    {
+        return false;
+    }
+
     return true;
 }
 
 
-bool handle_result()
+bool handle_result(SOCKET clientSocket, std::vector<int> &matrix)
 {
     std::cout << "Sending result..." << std::endl;
+
+    int element_count = matrix.size();
+    int net_count = htonl(element_count);
+
+    if (!send_all(clientSocket, (char*) &net_count, sizeof(net_count)))
+    {
+        return false;
+    }
+
+    // converting matrix to network order
+    std::vector<int> net_matrix(element_count);
+
+    for (int i = 0; i < element_count; i++)
+    {
+        net_matrix[i] = htonl(matrix[i]);
+    }
+
+    if (!send_all(clientSocket, (char*) &net_matrix[0], element_count * sizeof(int)))
+    {
+        return false;
+    }
+
     return true;
 }
 
@@ -149,6 +270,8 @@ bool process_client_commands(SOCKET clientSocket)
     int size = 0;
     int threads_num = 0;
     std::vector<int> matrix;
+
+    Status current_status = IDLE;
 
     while (true)
     {
@@ -169,7 +292,7 @@ bool process_client_commands(SOCKET clientSocket)
                 break;
 
             case START:
-                if (!handle_start())
+                if (!handle_start(matrix, size, threads_num, current_status))
                 {
                     std::cerr << "Error handling START" << std::endl;
                     return false;
@@ -177,7 +300,7 @@ bool process_client_commands(SOCKET clientSocket)
                 break;
 
             case STATUS:
-                if (!handle_status())
+                if (!handle_status(clientSocket, current_status))
                 {
                     std::cerr << "Error handling STATUS" << std::endl;
                     return false;
@@ -185,7 +308,7 @@ bool process_client_commands(SOCKET clientSocket)
                 break;
 
             case RESULT:
-                if (!handle_result())
+                if (!handle_result(clientSocket, matrix))
                 {
                     std::cerr << "Error handling RESULT" << std::endl;
                     return false;
