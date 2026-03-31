@@ -3,6 +3,7 @@
 #include <vector>
 #include <chrono>
 #include <thread>
+#include <atomic>
 
 #define port 8080
 
@@ -199,31 +200,53 @@ bool handle_send_data(SOCKET clientSocket, std::vector<int> &matrix, int &size, 
     std::cout << "Size of matrix: " << size << std::endl;
     std::cout << "Threads number: " << threads_num << std::endl;
 
+    // Response to client
+    int response = htonl(1);
+
+    if (!send_all(clientSocket, (char*) &response, sizeof(response)))
+    {
+        return false;
+    }
+
     return true;
 }
 
 
-bool handle_start(std::vector<int> &matrix, int size, int threads_num, Status &current_status)
+void compute_task(std::vector<int>& matrix, int size, int threads_num, std::atomic<Status>& current_status)
+{
+    std::this_thread::sleep_for(std::chrono::seconds(5));
+    parallel_compute(matrix, size, threads_num);
+    current_status = DONE;
+}
+
+
+bool handle_start(SOCKET clientSocket, std::vector<int> &matrix, int size, int threads_num, std::atomic<Status> &current_status)
 {
     std::cout << "Computing started..." << std::endl;
 
     current_status = PROCESSING;
-    std::this_thread::sleep_for(std::chrono::seconds(2));
-    parallel_compute(matrix, size, threads_num);
 
-    current_status = DONE;
+    std::thread compute_thread(compute_task, std::ref(matrix), size, threads_num, std::ref(current_status));
+    compute_thread.detach();
+
+    // sending answer to client (1 == Ok)
+    int response = htonl(1);
+    if (!send_all(clientSocket, (char*) &response, sizeof(response)))
+    {
+        return false;
+    }
 
     return true;
 }
 
 
-bool handle_status(SOCKET clientSocket, Status &current_status)
+bool handle_status(SOCKET clientSocket, std::atomic<Status> &current_status)
 {
     std::cout << "Sending status..." << std::endl;
 
-    int net_status = htonl((int)current_status);
+    int net_status = htonl(current_status.load());
 
-    int bytes = send(clientSocket, (char*) &net_status, sizeof(net_status), 0);
+    int bytes = send_all(clientSocket, (char*) &net_status, sizeof(net_status));
 
     if (bytes == SOCKET_ERROR || bytes == 0)
     {
@@ -271,7 +294,7 @@ bool process_client_commands(SOCKET clientSocket)
     int threads_num = 0;
     std::vector<int> matrix;
 
-    Status current_status = IDLE;
+    std::atomic<Status> current_status = IDLE;
 
     while (true)
     {
@@ -292,7 +315,7 @@ bool process_client_commands(SOCKET clientSocket)
                 break;
 
             case START:
-                if (!handle_start(matrix, size, threads_num, current_status))
+                if (!handle_start(clientSocket, matrix, size, threads_num, current_status))
                 {
                     std::cerr << "Error handling START" << std::endl;
                     return false;
@@ -329,6 +352,13 @@ bool process_client_commands(SOCKET clientSocket)
     return true;
 }
 
+
+void client_handler(SOCKET clientSocket)
+{
+    process_client_commands(clientSocket);
+    closesocket(clientSocket);
+    std::cout << "Client disconnected" << std::endl;
+}
 
 // Connection methods
 SOCKET setup_server()
@@ -376,6 +406,7 @@ SOCKET accept_client(SOCKET serverSocket)
     return clientSocket;
 }
 
+
 int main()
 {
     // Initialize Winsock
@@ -399,27 +430,24 @@ int main()
     }
 
     // Client socket configuration
-    SOCKET clientSocket = accept_client(serverSocket);
-    if (clientSocket == INVALID_SOCKET)
+    while (true)
     {
-        closesocket(serverSocket);
-        WSACleanup();
-        return 1;
-    }
-    else
-    {
+        SOCKET clientSocket = accept_client(serverSocket);
+        if (clientSocket == INVALID_SOCKET)
+        {
+            closesocket(serverSocket);
+            WSACleanup();
+            return 1;
+        }
+
         std::cout << "Client connected" << std::endl;
+
+        std::thread client_thread(client_handler, clientSocket);
+
+        client_thread.detach();
     }
 
 
-    // receiving
-    process_client_commands(clientSocket);
-
-
-
-
-
-    closesocket(clientSocket);
     closesocket(serverSocket);
     WSACleanup();
     return 0;

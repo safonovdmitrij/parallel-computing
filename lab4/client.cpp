@@ -2,7 +2,6 @@
 #include <thread>
 #include <WinSock2.h>
 #include <vector>
-#include <bits/fs_fwd.h>
 
 
 #define port 8080
@@ -216,6 +215,25 @@ bool send_data(SOCKET socket, std::vector<int>& matrix, int size, int threads_nu
     {
         return false;
     }
+
+    // waiting for response
+    int net_response;
+
+    if (!receive_all(socket, (char*) &net_response, sizeof(net_response)))
+    {
+        return false;
+    }
+
+    int response = ntohl(net_response);
+
+    if (response != 1)
+    {
+        std::cerr << "Server failde to receive data" << std::endl;
+        return false;
+    }
+
+    std::cout << "Server confirmed data received" << std::endl;
+
     return true;
 }
 
@@ -228,8 +246,28 @@ bool start_computing(SOCKET socket)
     {
         return false;
     }
+
+    // waiting for response
+    int net_response;
+
+    if (!receive_all(socket, (char*) &net_response, sizeof(net_response)))
+    {
+        return false;
+    }
+
+    int response = ntohl(net_response);
+
+    if (response != 1)
+    {
+        std::cerr << "Server did not start computation" << std::endl;
+        return false;
+    }
+
+    std::cout << "Server started computation" << std::endl;
+
     return true;
 }
+
 
 bool get_status(SOCKET socket, int &status)
 {
@@ -367,7 +405,7 @@ int main()
 
         std::cout << "Status: " << status << std::endl;
 
-        // std::this_thread::sleep_for(std::chrono::milliseconds(500)); // pause
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000)); // pause
     }
 
 
