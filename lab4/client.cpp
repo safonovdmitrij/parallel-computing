@@ -8,7 +8,7 @@
 #define SERVER_IP "127.0.0.1"
 
 
-const int matrix_size = 20;
+const int matrix_size = 10000;
 const int threads_num = 3;
 
 enum Command
@@ -381,7 +381,7 @@ int main()
     std::vector<int> matrix(matrix_size * matrix_size);
     fill_matrix(matrix);
 
-    print_matrix(matrix);
+    // print_matrix(matrix);
     // SEND_DATA
     if (!send_data(clientSocket, matrix, matrix_size, threads_num))
     {
@@ -415,7 +415,7 @@ int main()
         std::cerr << "Error reading result" << std::endl;
     }
 
-    print_matrix(matrix);
+    // print_matrix(matrix);
 
     if (!send_exit(clientSocket))
     {
