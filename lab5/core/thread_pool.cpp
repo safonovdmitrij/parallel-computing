@@ -7,9 +7,8 @@ static std::mutex cout_mutex;
 
 void Task::operator()() const
 {
-    std::this_thread::sleep_for(std::chrono::seconds(this->duration));
-    std::lock_guard<std::mutex> lock(cout_mutex);
-    std::cout << "task " << this->id << " Execution time: " << this->duration << " seconds" << std::endl;
+    std::cout << "Client connected successfully"<<std::endl;
+    closesocket(client);
 }
 
 ThreadPool::ThreadPool(int num_threads)
@@ -54,9 +53,10 @@ void ThreadPool::worker()
         while((tasks.empty() || paused) && !stopped)
         {
             auto wait_start = std::chrono::steady_clock::now();
-            condition.wait(lock);
-            auto wait_end = std::chrono::steady_clock::now();
 
+            condition.wait(lock);
+
+            auto wait_end = std::chrono::steady_clock::now();
             auto wait_duration = std::chrono::duration_cast<std::chrono::microseconds>(wait_end - wait_start).count();
             total_wait_time += wait_duration;
             wait_count++;
@@ -67,14 +67,20 @@ void ThreadPool::worker()
             return;
         }
 
-        task = tasks.top();
+        task = tasks.front();
         tasks.pop();
 
         lock.unlock();
 
+        auto work_start = std::chrono::steady_clock::now();
+
         task();
+
+        auto work_end = std::chrono::steady_clock::now();
+        auto work_duration = std::chrono::duration_cast<std::chrono::microseconds>(work_end - work_start).count();
+        total_execution_time += work_duration;
+
         tasks_executed++;
-        total_execution_time += task.duration;
     }
 }
 

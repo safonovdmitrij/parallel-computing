@@ -9,4 +9,6 @@ add_executable(client client/client.cpp)
 target_link_libraries(server ws2_32)
 target_link_libraries(client ws2_32)
 
+target_include_directories(server PRIVATE core)
+
 target_sources(server PRIVATE core/thread_pool.h)

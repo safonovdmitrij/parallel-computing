@@ -5,8 +5,9 @@
 #include <thread>
 #include <atomic>
 
-#define port 8080
+#include "thread_pool.h"
 
+#define port 8080
 
 // Connection methods
 SOCKET setup_server()
@@ -72,9 +73,28 @@ int main()
         WSACleanup();
         return 1;
     }
-    else
+
+    std::cout << "Server listening on port " << port << std::endl;
+
+    ThreadPool pool(4);
+    pool.start();
+
+    while (true)
     {
-        std::cout << "Server listening on port " << port << std::endl;
+        SOCKET client = accept_client(serverSocket);
+
+        if(client == INVALID_SOCKET)
+        {
+            std::cerr << "Accept failed" << WSAGetLastError << std::endl;
+            continue;
+        }
+        else
+        {
+            Task task;
+            task.client = client;
+
+            pool.add_task(task);
+        }
     }
 
 

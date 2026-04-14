@@ -7,31 +7,21 @@
 #include <mutex>
 #include <condition_variable>
 #include <atomic>
+#include <WinSock2.h>
 
 class Task
 {
 public:
-    int id;
-    int duration;
+    SOCKET client;
 
     void operator()() const;
-};
-
-
-class TaskCompare
-{
-public:
-    bool operator()(const Task& a, const Task& b) const
-    {
-        return a.duration > b.duration;
-    }
 };
 
 
 class ThreadPool
 {
 private:
-    std::priority_queue<Task, std::vector<Task>, TaskCompare> tasks;
+    std::queue<Task> tasks;
     std::vector<std::thread> workers;
     std::mutex queue_mutex;
     std::condition_variable condition;
