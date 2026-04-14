@@ -61,11 +61,25 @@ int main()
         WSACleanup();
         return 1;
     }
-    else
-    {
-        std::cout << "Connected to server" << std::endl;
-    }
 
+    std::cout << "Connected to server" << std::endl;
+
+    // Send
+    std::string request =
+        "GET /page2.html HTTP/1.1\r\n"
+        "Host: localhost\r\n\r\n";
+
+    send(clientSocket, request.c_str(), request.size(), 0);
+
+    // Receive
+    char buffer[4096];
+    int bytes = recv(clientSocket, buffer, sizeof(buffer), 0);
+
+    if (bytes > 0)
+    {
+        buffer[bytes] = '\0';
+        std::cout << buffer << std::endl;
+    }
 
     closesocket(clientSocket);
     WSACleanup();

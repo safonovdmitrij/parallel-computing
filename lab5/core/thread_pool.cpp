@@ -2,12 +2,94 @@
 
 #include <iostream>
 #include <chrono>
+#include <fstream>
 
 static std::mutex cout_mutex;
 
+std::string read_request(SOCKET client)
+{
+    char buffer[1024];
+
+    int bytes = recv(client, buffer, sizeof(buffer), 0);
+
+    if(bytes <= 0)
+    {
+        return "";
+    }
+
+    buffer[bytes] = '\0';
+    return std::string(buffer);
+}
+
+std::string parse_path(const std::string &request)
+{
+    size_t start = request.find("GET ") + 4;
+    size_t end = request.find(" ", start);
+
+    std::string path = request.substr(start, end - start);
+
+    if (path == "/")
+    {
+        path = "/index.html";
+    }
+
+    return path;
+}
+
+bool load_file(std::string &path, std::string &content)
+{
+    std::ifstream file("static" + path);
+
+    if(!file.is_open())
+    {
+        return false;
+    }
+
+    content.assign((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+
+    return true;
+}
+
+std::string build_response(const std::string& content)
+{
+    return "HTTP/1.1 200 OK\r\n"
+            "Content-Length: " + std::to_string(content.size()) +
+            "\r\n\r\n" + content;
+}
+
+std::string build_404()
+{
+    return "HTTP/1.1 404 Not Found\r\n"
+           "Content-Length: 13\r\n\r\n404 Not Found";
+}
+
 void Task::operator()() const
 {
-    std::cout << "Client connected successfully"<<std::endl;
+    std::string request = read_request(client);
+
+    if (request.empty())
+    {
+        closesocket(client);
+        return;
+    }
+
+    std::string path = parse_path(request);
+
+    std::string content;
+
+    std::string response;
+
+    if (load_file(path, content))
+    {
+        response = build_response(content);
+    }
+    else
+    {
+        response = build_404();
+    }
+
+    send(client, response.c_str(), response.size(), 0);
+
     closesocket(client);
 }
 
