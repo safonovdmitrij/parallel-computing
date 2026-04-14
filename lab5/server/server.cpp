@@ -76,7 +76,7 @@ int main()
 
     std::cout << "Server listening on port " << port << std::endl;
 
-    ThreadPool pool(4);
+    ThreadPool pool(12);
     pool.start();
 
     while (true)
